@@ -319,9 +319,24 @@ export default function Home() {
       </div>
       <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="hidden" onChange={handleImageChange} />
       {previewUrl && (
-        <button className="text-xs text-gray-400 hover:text-gray-600 underline" onClick={() => fileInputRef.current?.click()}>
-          Replace image
-        </button>
+        <div className="flex gap-3">
+          <button className="text-xs text-gray-500 hover:text-gray-700 underline" onClick={() => fileInputRef.current?.click()}>
+            Replace image
+          </button>
+          <button
+            className="text-xs text-red-400 hover:text-red-600 underline"
+            onClick={() => {
+              setPreviewUrl(null);
+              setImageBase64(null);
+              setImageMediaType("");
+              setAssessment(null);
+              setAssessError(null);
+              if (fileInputRef.current) fileInputRef.current.value = "";
+            }}
+          >
+            Clear
+          </button>
+        </div>
       )}
       <div className="flex justify-between pt-2">
         <button onClick={() => goTo(1)} className="text-sm text-gray-500 hover:text-gray-700 px-4 py-2 rounded-lg border hover:border-gray-400 transition-colors">
@@ -355,9 +370,15 @@ export default function Home() {
           <button
             onClick={handleAssess}
             disabled={loading}
-            className="bg-gray-900 text-white text-sm px-5 py-2 rounded-lg disabled:opacity-40 hover:bg-gray-700 transition-colors font-medium"
+            className="flex items-center gap-2 bg-gray-900 text-white text-sm px-5 py-2 rounded-lg disabled:opacity-40 hover:bg-gray-700 transition-colors font-medium"
           >
-            {loading ? "AI is analysing the damage…" : assessment ? "Re-run Assessment" : "Run AI Assessment"}
+            {loading && (
+              <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+              </svg>
+            )}
+            {loading ? "Analysing…" : assessment ? "Re-run Assessment" : "Run AI Assessment"}
           </button>
           {assessError && <p className="text-sm text-red-600">{assessError}</p>}
         </div>
