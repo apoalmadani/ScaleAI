@@ -106,7 +106,7 @@ function Input({ ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
   return (
     <input
       {...props}
-      className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
+      className="w-full border rounded px-3 py-2 text-sm text-gray-900 bg-white placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-400"
     />
   );
 }
@@ -247,7 +247,7 @@ export default function Home() {
         <div>
           <Label>Incident Type</Label>
           <select
-            className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
+            className="w-full border rounded px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-1 focus:ring-gray-400"
             value={claim.incidentType}
             onChange={(e) => updateClaim("incidentType", e.target.value as ClaimData["incidentType"])}
           >
@@ -277,7 +277,7 @@ export default function Home() {
           <Label>Incident Description</Label>
           <textarea
             rows={3}
-            className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 resize-none"
+            className="w-full border rounded px-3 py-2 text-sm text-gray-900 bg-white placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-400 resize-none"
             placeholder="Briefly describe what happened..."
             value={claim.description}
             onChange={(e) => updateClaim("description", e.target.value)}
@@ -377,7 +377,7 @@ export default function Home() {
                 <select
                   value={assessment.severity}
                   onChange={(e) => updateAssessment("severity", e.target.value as Assessment["severity"])}
-                  className={`w-full border rounded px-3 py-1.5 text-sm font-medium focus:outline-none focus:ring-1 focus:ring-gray-400 ${SEVERITY_COLOR[assessment.severity]}`}
+                  className={`w-full border rounded px-3 py-1.5 text-sm font-medium bg-white focus:outline-none focus:ring-1 focus:ring-gray-400 ${SEVERITY_COLOR[assessment.severity]}`}
                 >
                   <option value="minor">Minor</option>
                   <option value="moderate">Moderate</option>
@@ -409,7 +409,7 @@ export default function Home() {
                 <Label>Adjuster Notes</Label>
                 <textarea
                   rows={2}
-                  className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 resize-none"
+                  className="w-full border rounded px-3 py-2 text-sm text-gray-900 bg-white placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-400 resize-none"
                   placeholder="Add your observations or overrides here…"
                   value={adjusterNotes}
                   onChange={(e) => setAdjusterNotes(e.target.value)}
@@ -520,7 +520,7 @@ export default function Home() {
               <div>
                 <Label>Escalation Reason</Label>
                 <select
-                  className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
+                  className="w-full border rounded px-3 py-2 text-sm text-gray-900 bg-white focus:outline-none focus:ring-1 focus:ring-gray-400"
                   value={escalation.reason}
                   onChange={(e) => setEscalation({ ...escalation, reason: e.target.value as Escalation["reason"] })}
                 >
@@ -535,7 +535,7 @@ export default function Home() {
                 <Label>Notes for Senior Adjuster</Label>
                 <textarea
                   rows={3}
-                  className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 resize-none"
+                  className="w-full border rounded px-3 py-2 text-sm text-gray-900 bg-white placeholder:text-gray-400 focus:outline-none focus:ring-1 focus:ring-gray-400 resize-none"
                   placeholder="Add context for the reviewing adjuster…"
                   value={escalation.notes}
                   onChange={(e) => setEscalation({ ...escalation, notes: e.target.value })}
