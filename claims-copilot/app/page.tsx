@@ -2,6 +2,22 @@
 
 import { useRef, useState, ChangeEvent } from "react";
 
+// ── Types ────────────────────────────────────────────────────────────────────
+
+type Step = 1 | 2 | 3 | 4;
+
+interface ClaimData {
+  policyholderName: string;
+  policyholderPhone: string;
+  policyNumber: string;
+  claimId: string;
+  incidentDate: string;
+  incidentType: "collision" | "weather" | "theft" | "vandalism" | "other";
+  incidentLocation: string;
+  thirdPartyInvolved: boolean;
+  description: string;
+}
+
 interface Assessment {
   damaged_parts: string[];
   severity: "minor" | "moderate" | "severe";
@@ -10,6 +26,13 @@ interface Assessment {
   confidence: number;
   recommended_next_step: string;
 }
+
+interface Escalation {
+  reason: "high_value" | "disputed" | "fraud_suspected" | "complex_damage" | "other";
+  notes: string;
+}
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
 const SEVERITY_COLOR: Record<string, string> = {
   minor: "bg-green-100 text-green-800",
@@ -23,49 +46,129 @@ function confidenceColor(c: number) {
   return "bg-red-100 text-red-800";
 }
 
+function formatDate(iso: string) {
+  if (!iso) return "—";
+  return new Date(iso).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" });
+}
+
+const STEP_LABELS: Record<Step, string> = {
+  1: "Initiation",
+  2: "Documentation",
+  3: "Assessment",
+  4: "Decision",
+};
+
+const EMPTY_CLAIM: ClaimData = {
+  policyholderName: "",
+  policyholderPhone: "",
+  policyNumber: "",
+  claimId: "",
+  incidentDate: "",
+  incidentType: "collision",
+  incidentLocation: "",
+  thirdPartyInvolved: false,
+  description: "",
+};
+
+// ── Sub-components ────────────────────────────────────────────────────────────
+
+function StepIndicator({ current, maxReached }: { current: Step; maxReached: Step }) {
+  return (
+    <div className="flex items-center gap-0 mb-8">
+      {([1, 2, 3, 4] as Step[]).map((s, i) => {
+        const done = s < current;
+        const active = s === current;
+        const reachable = s <= maxReached;
+        return (
+          <div key={s} className="flex items-center flex-1 last:flex-none">
+            <div className={`flex flex-col items-center gap-1 ${reachable ? "cursor-default" : "opacity-40"}`}>
+              <div className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-semibold border-2 transition-colors
+                ${active ? "border-gray-900 bg-gray-900 text-white" : done ? "border-gray-900 bg-white text-gray-900" : "border-gray-300 bg-white text-gray-400"}`}>
+                {done ? "✓" : s}
+              </div>
+              <span className={`text-xs font-medium whitespace-nowrap ${active ? "text-gray-900" : "text-gray-400"}`}>
+                {STEP_LABELS[s]}
+              </span>
+            </div>
+            {i < 3 && <div className={`flex-1 h-0.5 mx-2 mb-4 ${s < current ? "bg-gray-900" : "bg-gray-200"}`} />}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function Label({ children }: { children: React.ReactNode }) {
+  return <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">{children}</label>;
+}
+
+function Input({ ...props }: React.InputHTMLAttributes<HTMLInputElement>) {
+  return (
+    <input
+      {...props}
+      className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
+    />
+  );
+}
+
+function SummaryRow({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex justify-between py-1.5 border-b last:border-0 text-sm">
+      <span className="text-gray-500 capitalize">{label}</span>
+      <span className="text-gray-900 font-medium text-right max-w-[60%]">{value}</span>
+    </div>
+  );
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
+
 export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const [policyNumber, setPolicyNumber] = useState("");
-  const [claimId, setClaimId] = useState("");
-  const [description, setDescription] = useState("");
+  const [step, setStep] = useState<Step>(1);
+  const [maxReached, setMaxReached] = useState<Step>(1);
+
+  const [claim, setClaim] = useState<ClaimData>(EMPTY_CLAIM);
 
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [imageBase64, setImageBase64] = useState<string | null>(null);
   const [imageMediaType, setImageMediaType] = useState<string>("");
 
-  const [editedAssessment, setEditedAssessment] = useState<Assessment | null>(null);
+  const [assessment, setAssessment] = useState<Assessment | null>(null);
+  const [adjusterNotes, setAdjusterNotes] = useState("");
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [status, setStatus] = useState<"idle" | "approved" | "flagged">("idle");
+  const [assessError, setAssessError] = useState<string | null>(null);
+
+  // Step 4 state
+  type DecisionState = "idle" | "approved" | "escalating" | "escalated";
+  const [decision, setDecision] = useState<DecisionState>("idle");
+  const [escalation, setEscalation] = useState<Escalation>({ reason: "high_value", notes: "" });
+
+  function goTo(s: Step) {
+    setStep(s);
+    if (s > maxReached) setMaxReached(s);
+  }
+
+  function updateClaim<K extends keyof ClaimData>(key: K, value: ClaimData[K]) {
+    setClaim((prev) => ({ ...prev, [key]: value }));
+  }
 
   function handleImageChange(e: ChangeEvent<HTMLInputElement>) {
     const file = e.target.files?.[0];
     if (!file) return;
-
     setPreviewUrl(URL.createObjectURL(file));
     setImageMediaType(file.type);
-
     const reader = new FileReader();
-    reader.onload = () => {
-      const result = reader.result as string;
-      setImageBase64(result.split(",")[1]);
-    };
+    reader.onload = () => setImageBase64((reader.result as string).split(",")[1]);
     reader.readAsDataURL(file);
-
-    setEditedAssessment(null);
-    setStatus("idle");
-    setError(null);
+    setAssessment(null);
+    setAssessError(null);
   }
 
   async function handleAssess() {
-    if (!imageBase64) {
-      setError("Please upload a vehicle damage image first.");
-      return;
-    }
+    if (!imageBase64) return;
     setLoading(true);
-    setError(null);
-    setStatus("idle");
+    setAssessError(null);
     try {
       const res = await fetch("/api/assess", {
         method: "POST",
@@ -74,230 +177,409 @@ export default function Home() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Assessment failed");
-      setEditedAssessment(data as Assessment);
+      setAssessment(data as Assessment);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Unknown error");
+      setAssessError(err instanceof Error ? err.message : "Unknown error");
     } finally {
       setLoading(false);
     }
   }
 
-  function updateField<K extends keyof Assessment>(key: K, value: Assessment[K]) {
-    if (!editedAssessment) return;
-    setEditedAssessment({ ...editedAssessment, [key]: value });
+  function updateAssessment<K extends keyof Assessment>(key: K, value: Assessment[K]) {
+    if (!assessment) return;
+    setAssessment({ ...assessment, [key]: value });
   }
 
   function updateArrayField(key: "damaged_parts" | "damage_types", raw: string) {
-    if (!editedAssessment) return;
-    setEditedAssessment({
-      ...editedAssessment,
-      [key]: raw.split(",").map((s) => s.trim()).filter(Boolean),
-    });
+    if (!assessment) return;
+    setAssessment({ ...assessment, [key]: raw.split(",").map((s) => s.trim()).filter(Boolean) });
   }
 
-  return (
-    <main className="min-h-screen bg-gray-50 py-10 px-4">
-      <div className="max-w-2xl mx-auto space-y-8">
-        <div className="border-b pb-4">
-          <h1 className="text-2xl font-semibold text-gray-900">Claims Copilot</h1>
-          <p className="text-sm text-gray-500 mt-1">Auto-insurance damage assessment assistant</p>
+  function resetAll() {
+    setStep(1);
+    setMaxReached(1);
+    setClaim(EMPTY_CLAIM);
+    setPreviewUrl(null);
+    setImageBase64(null);
+    setImageMediaType("");
+    setAssessment(null);
+    setAdjusterNotes("");
+    setAssessError(null);
+    setDecision("idle");
+    setEscalation({ reason: "high_value", notes: "" });
+  }
+
+  const authRef = claim.claimId
+    ? `AUTH-${claim.claimId.toUpperCase()}-${new Date().toISOString().slice(0, 10)}`
+    : `AUTH-${Date.now()}`;
+  const escalRef = `ESC-${claim.claimId?.toUpperCase() || Date.now()}`;
+
+  // ── Step 1 ────────────────────────────────────────────────────────────────
+  const step1Valid = claim.policyNumber.trim() !== "" && claim.claimId.trim() !== "";
+
+  const renderStep1 = () => (
+    <section className="bg-white rounded-lg border p-6 space-y-4">
+      <div className="mb-2">
+        <h2 className="text-base font-medium text-gray-900">Claim Initiation</h2>
+        <p className="text-xs text-gray-400 mt-0.5">Collected by claims agent from policyholder contact</p>
+      </div>
+      <div className="grid grid-cols-2 gap-4">
+        <div>
+          <Label>Policyholder Name</Label>
+          <Input placeholder="Jane Smith" value={claim.policyholderName} onChange={(e) => updateClaim("policyholderName", e.target.value)} />
+        </div>
+        <div>
+          <Label>Phone</Label>
+          <Input type="tel" placeholder="+1 555 000 0000" value={claim.policyholderPhone} onChange={(e) => updateClaim("policyholderPhone", e.target.value)} />
+        </div>
+        <div>
+          <Label>Policy Number *</Label>
+          <Input placeholder="POL-000000" value={claim.policyNumber} onChange={(e) => updateClaim("policyNumber", e.target.value)} />
+        </div>
+        <div>
+          <Label>Claim ID *</Label>
+          <Input placeholder="CLM-000000" value={claim.claimId} onChange={(e) => updateClaim("claimId", e.target.value)} />
+        </div>
+        <div>
+          <Label>Incident Date</Label>
+          <Input type="date" value={claim.incidentDate} onChange={(e) => updateClaim("incidentDate", e.target.value)} />
+        </div>
+        <div>
+          <Label>Incident Type</Label>
+          <select
+            className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
+            value={claim.incidentType}
+            onChange={(e) => updateClaim("incidentType", e.target.value as ClaimData["incidentType"])}
+          >
+            <option value="collision">Collision</option>
+            <option value="weather">Weather / Natural event</option>
+            <option value="theft">Theft / Vandalism</option>
+            <option value="vandalism">Vandalism</option>
+            <option value="other">Other</option>
+          </select>
+        </div>
+        <div className="col-span-2">
+          <Label>Incident Location</Label>
+          <Input placeholder="123 Main St, City, State" value={claim.incidentLocation} onChange={(e) => updateClaim("incidentLocation", e.target.value)} />
+        </div>
+        <div className="col-span-2">
+          <Label>Third Party Involved?</Label>
+          <div className="flex gap-6 mt-1">
+            {[true, false].map((val) => (
+              <label key={String(val)} className="flex items-center gap-2 text-sm text-gray-700 cursor-pointer">
+                <input type="radio" name="thirdParty" checked={claim.thirdPartyInvolved === val} onChange={() => updateClaim("thirdPartyInvolved", val)} className="accent-gray-900" />
+                {val ? "Yes" : "No"}
+              </label>
+            ))}
+          </div>
+        </div>
+        <div className="col-span-2">
+          <Label>Incident Description</Label>
+          <textarea
+            rows={3}
+            className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 resize-none"
+            placeholder="Briefly describe what happened..."
+            value={claim.description}
+            onChange={(e) => updateClaim("description", e.target.value)}
+          />
+        </div>
+      </div>
+      <div className="flex justify-end pt-2">
+        <button
+          disabled={!step1Valid}
+          onClick={() => goTo(2)}
+          className="bg-gray-900 text-white text-sm px-5 py-2 rounded-lg disabled:opacity-40 hover:bg-gray-700 transition-colors font-medium"
+        >
+          Next: Upload Photos →
+        </button>
+      </div>
+    </section>
+  );
+
+  // ── Step 2 ────────────────────────────────────────────────────────────────
+  const renderStep2 = () => (
+    <section className="bg-white rounded-lg border p-6 space-y-4">
+      <div className="mb-2">
+        <h2 className="text-base font-medium text-gray-900">Damage Documentation</h2>
+        <p className="text-xs text-gray-400 mt-0.5">Photos submitted by the policyholder</p>
+      </div>
+      <div
+        className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-gray-400 transition-colors"
+        onClick={() => fileInputRef.current?.click()}
+      >
+        {previewUrl ? (
+          <img src={previewUrl} alt="Vehicle damage preview" className="max-h-64 mx-auto rounded object-contain" />
+        ) : (
+          <div className="text-gray-400 space-y-1">
+            <div className="text-3xl">📷</div>
+            <p className="text-sm">Click to upload damage photo</p>
+            <p className="text-xs">JPG, PNG, WEBP up to 20 MB</p>
+          </div>
+        )}
+      </div>
+      <input ref={fileInputRef} type="file" accept="image/jpeg,image/png,image/webp,image/gif" className="hidden" onChange={handleImageChange} />
+      {previewUrl && (
+        <button className="text-xs text-gray-400 hover:text-gray-600 underline" onClick={() => fileInputRef.current?.click()}>
+          Replace image
+        </button>
+      )}
+      <div className="flex justify-between pt-2">
+        <button onClick={() => goTo(1)} className="text-sm text-gray-500 hover:text-gray-700 px-4 py-2 rounded-lg border hover:border-gray-400 transition-colors">
+          ← Back
+        </button>
+        <button
+          disabled={!imageBase64}
+          onClick={() => goTo(3)}
+          className="bg-gray-900 text-white text-sm px-5 py-2 rounded-lg disabled:opacity-40 hover:bg-gray-700 transition-colors font-medium"
+        >
+          Next: Run Assessment →
+        </button>
+      </div>
+    </section>
+  );
+
+  // ── Step 3 ────────────────────────────────────────────────────────────────
+  const renderStep3 = () => (
+    <div className="space-y-4">
+      <section className="bg-white rounded-lg border p-6 space-y-4">
+        <div className="mb-2">
+          <h2 className="text-base font-medium text-gray-900">AI Damage Assessment</h2>
+          <p className="text-xs text-gray-400 mt-0.5">AI analyses the photo and generates a structured damage estimate for agent review</p>
         </div>
 
-        {/* Claim Intake Form */}
-        <section className="bg-white rounded-lg border p-6 space-y-4">
-          <h2 className="text-base font-medium text-gray-800">Claim Information</h2>
-          <div className="grid grid-cols-2 gap-4">
-            <div>
-              <label className="block text-sm text-gray-600 mb-1">Policy Number</label>
-              <input
-                type="text"
-                className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
-                placeholder="POL-000000"
-                value={policyNumber}
-                onChange={(e) => setPolicyNumber(e.target.value)}
-              />
-            </div>
-            <div>
-              <label className="block text-sm text-gray-600 mb-1">Claim ID</label>
-              <input
-                type="text"
-                className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
-                placeholder="CLM-000000"
-                value={claimId}
-                onChange={(e) => setClaimId(e.target.value)}
-              />
-            </div>
-          </div>
-          <div>
-            <label className="block text-sm text-gray-600 mb-1">Incident Description</label>
-            <textarea
-              rows={3}
-              className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 resize-none"
-              placeholder="Briefly describe what happened..."
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
-            />
-          </div>
-        </section>
+        {previewUrl && (
+          <img src={previewUrl} alt="Uploaded damage" className="max-h-40 rounded object-contain border" />
+        )}
 
-        {/* Image Upload */}
-        <section className="bg-white rounded-lg border p-6 space-y-4">
-          <h2 className="text-base font-medium text-gray-800">Vehicle Damage Photo</h2>
-          <div
-            className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-gray-400 transition-colors"
-            onClick={() => fileInputRef.current?.click()}
-          >
-            {previewUrl ? (
-              <img
-                src={previewUrl}
-                alt="Vehicle damage preview"
-                className="max-h-64 mx-auto rounded object-contain"
-              />
-            ) : (
-              <div className="text-gray-400 space-y-1">
-                <div className="text-3xl">📷</div>
-                <p className="text-sm">Click to upload damage photo</p>
-                <p className="text-xs">JPG, PNG, WEBP up to 20 MB</p>
-              </div>
-            )}
-          </div>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/jpeg,image/png,image/webp,image/gif"
-            className="hidden"
-            onChange={handleImageChange}
-          />
-          {previewUrl && (
-            <button
-              className="text-xs text-gray-400 hover:text-gray-600 underline"
-              onClick={() => fileInputRef.current?.click()}
-            >
-              Replace image
-            </button>
-          )}
-        </section>
-
-        {/* Run Assessment */}
         <div className="flex items-center gap-3">
           <button
             onClick={handleAssess}
-            disabled={loading || !imageBase64}
-            className="bg-gray-900 text-white text-sm px-5 py-2.5 rounded-lg disabled:opacity-40 hover:bg-gray-700 transition-colors font-medium"
+            disabled={loading}
+            className="bg-gray-900 text-white text-sm px-5 py-2 rounded-lg disabled:opacity-40 hover:bg-gray-700 transition-colors font-medium"
           >
-            {loading ? "Assessing…" : "Run AI Assessment"}
+            {loading ? "AI is analysing the damage…" : assessment ? "Re-run Assessment" : "Run AI Assessment"}
           </button>
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {assessError && <p className="text-sm text-red-600">{assessError}</p>}
         </div>
 
-        {/* Assessment Card */}
-        {editedAssessment && (
-          <section className="bg-white rounded-lg border p-6 space-y-5">
+        {assessment && (
+          <div className="space-y-4 pt-2 border-t">
             <div className="flex items-center justify-between">
-              <h2 className="text-base font-medium text-gray-800">Assessment</h2>
-              <div className="flex items-center gap-2">
-                <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${confidenceColor(editedAssessment.confidence)}`}>
-                  Confidence {Math.round(editedAssessment.confidence * 100)}%
-                </span>
-                {status === "approved" && (
-                  <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-blue-100 text-blue-800">Approved</span>
-                )}
-                {status === "flagged" && (
-                  <span className="text-xs font-medium px-2.5 py-1 rounded-full bg-orange-100 text-orange-800">Flagged</span>
-                )}
-              </div>
+              <span className="text-sm font-medium text-gray-700">Assessment Results</span>
+              <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${confidenceColor(assessment.confidence)}`}>
+                Confidence {Math.round(assessment.confidence * 100)}%
+              </span>
             </div>
 
             <div className="grid grid-cols-2 gap-4 text-sm">
               <div>
-                <label className="block text-xs text-gray-500 mb-1 font-medium uppercase tracking-wide">Severity</label>
+                <Label>Severity</Label>
                 <select
-                  value={editedAssessment.severity}
-                  onChange={(e) => updateField("severity", e.target.value as Assessment["severity"])}
-                  className={`w-full border rounded px-3 py-1.5 text-sm font-medium focus:outline-none focus:ring-1 focus:ring-gray-400 ${SEVERITY_COLOR[editedAssessment.severity]}`}
+                  value={assessment.severity}
+                  onChange={(e) => updateAssessment("severity", e.target.value as Assessment["severity"])}
+                  className={`w-full border rounded px-3 py-1.5 text-sm font-medium focus:outline-none focus:ring-1 focus:ring-gray-400 ${SEVERITY_COLOR[assessment.severity]}`}
                 >
                   <option value="minor">Minor</option>
                   <option value="moderate">Moderate</option>
                   <option value="severe">Severe</option>
                 </select>
               </div>
-
               <div>
-                <label className="block text-xs text-gray-500 mb-1 font-medium uppercase tracking-wide">Estimated Cost Range</label>
-                <input
-                  type="text"
-                  value={editedAssessment.estimated_cost_range}
-                  onChange={(e) => updateField("estimated_cost_range", e.target.value)}
-                  className="w-full border rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
-                />
+                <Label>Estimated Cost Range</Label>
+                <Input value={assessment.estimated_cost_range} onChange={(e) => updateAssessment("estimated_cost_range", e.target.value)} />
               </div>
-
               <div className="col-span-2">
-                <label className="block text-xs text-gray-500 mb-1 font-medium uppercase tracking-wide">
-                  Damaged Parts <span className="normal-case font-normal">(comma-separated)</span>
-                </label>
-                <input
-                  type="text"
-                  value={editedAssessment.damaged_parts.join(", ")}
-                  onChange={(e) => updateArrayField("damaged_parts", e.target.value)}
-                  className="w-full border rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
-                />
+                <Label>Damaged Parts <span className="normal-case font-normal">(comma-separated)</span></Label>
+                <Input value={assessment.damaged_parts.join(", ")} onChange={(e) => updateArrayField("damaged_parts", e.target.value)} />
               </div>
-
               <div className="col-span-2">
-                <label className="block text-xs text-gray-500 mb-1 font-medium uppercase tracking-wide">
-                  Damage Types <span className="normal-case font-normal">(comma-separated)</span>
-                </label>
-                <input
-                  type="text"
-                  value={editedAssessment.damage_types.join(", ")}
-                  onChange={(e) => updateArrayField("damage_types", e.target.value)}
-                  className="w-full border rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
-                />
+                <Label>Damage Types <span className="normal-case font-normal">(comma-separated)</span></Label>
+                <Input value={assessment.damage_types.join(", ")} onChange={(e) => updateArrayField("damage_types", e.target.value)} />
               </div>
-
               <div>
-                <label className="block text-xs text-gray-500 mb-1 font-medium uppercase tracking-wide">Confidence (0–1)</label>
-                <input
-                  type="number"
-                  min={0}
-                  max={1}
-                  step={0.01}
-                  value={editedAssessment.confidence}
-                  onChange={(e) => updateField("confidence", parseFloat(e.target.value))}
-                  className="w-full border rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
-                />
+                <Label>Confidence (0–1)</Label>
+                <Input type="number" min={0} max={1} step={0.01} value={assessment.confidence}
+                  onChange={(e) => updateAssessment("confidence", parseFloat(e.target.value))} />
               </div>
-
               <div className="col-span-2">
-                <label className="block text-xs text-gray-500 mb-1 font-medium uppercase tracking-wide">Recommended Next Step</label>
-                <input
-                  type="text"
-                  value={editedAssessment.recommended_next_step}
-                  onChange={(e) => updateField("recommended_next_step", e.target.value)}
-                  className="w-full border rounded px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
+                <Label>Recommended Next Step</Label>
+                <Input value={assessment.recommended_next_step} onChange={(e) => updateAssessment("recommended_next_step", e.target.value)} />
+              </div>
+              <div className="col-span-2">
+                <Label>Adjuster Notes</Label>
+                <textarea
+                  rows={2}
+                  className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 resize-none"
+                  placeholder="Add your observations or overrides here…"
+                  value={adjusterNotes}
+                  onChange={(e) => setAdjusterNotes(e.target.value)}
                 />
               </div>
             </div>
+          </div>
+        )}
+      </section>
 
-            <div className="flex gap-3 pt-2 border-t">
+      <div className="flex justify-between">
+        <button onClick={() => goTo(2)} className="text-sm text-gray-500 hover:text-gray-700 px-4 py-2 rounded-lg border hover:border-gray-400 transition-colors">
+          ← Back
+        </button>
+        <button
+          disabled={!assessment}
+          onClick={() => goTo(4)}
+          className="bg-gray-900 text-white text-sm px-5 py-2 rounded-lg disabled:opacity-40 hover:bg-gray-700 transition-colors font-medium"
+        >
+          Continue to Decision →
+        </button>
+      </div>
+    </div>
+  );
+
+  // ── Step 4 ────────────────────────────────────────────────────────────────
+  const renderStep4 = () => {
+    if (decision === "approved") {
+      return (
+        <section className="bg-white rounded-lg border p-6 space-y-4 text-center">
+          <div className="w-14 h-14 rounded-full bg-green-100 flex items-center justify-center mx-auto text-2xl">✓</div>
+          <h2 className="text-lg font-semibold text-gray-900">Authorization Issued</h2>
+          <p className="text-sm text-gray-500">Reference: <span className="font-mono font-medium text-gray-800">{authRef}</span></p>
+          <div className="text-left bg-gray-50 rounded-lg p-4 text-sm space-y-1">
+            <SummaryRow label="Policy" value={claim.policyNumber} />
+            <SummaryRow label="Claim ID" value={claim.claimId} />
+            <SummaryRow label="Severity" value={assessment!.severity} />
+            <SummaryRow label="Approved cost range" value={assessment!.estimated_cost_range} />
+          </div>
+          <p className="text-sm text-gray-600 bg-blue-50 border border-blue-100 rounded-lg p-3">
+            Policyholder is authorized to take the vehicle to an approved repair shop. The repair shop will conduct its own assessment and negotiate the final price with the insurance company.
+          </p>
+          <button onClick={resetAll} className="mt-2 text-sm text-gray-500 underline hover:text-gray-700">Start New Claim</button>
+        </section>
+      );
+    }
+
+    if (decision === "escalated") {
+      return (
+        <section className="bg-white rounded-lg border p-6 space-y-4 text-center">
+          <div className="w-14 h-14 rounded-full bg-orange-100 flex items-center justify-center mx-auto text-2xl">⚑</div>
+          <h2 className="text-lg font-semibold text-gray-900">Escalated to Senior Adjuster</h2>
+          <p className="text-sm text-gray-500">Reference: <span className="font-mono font-medium text-gray-800">{escalRef}</span></p>
+          <p className="text-sm text-gray-600 bg-orange-50 border border-orange-100 rounded-lg p-3">
+            A senior adjuster will review this claim within 24 hours. The policyholder will be notified of the outcome.
+          </p>
+          <button onClick={resetAll} className="mt-2 text-sm text-gray-500 underline hover:text-gray-700">Start New Claim</button>
+        </section>
+      );
+    }
+
+    return (
+      <div className="space-y-4">
+        {/* Claim + assessment summary */}
+        <section className="bg-white rounded-lg border p-6 space-y-3">
+          <h2 className="text-base font-medium text-gray-900">Claim Summary</h2>
+          <div className="grid grid-cols-2 gap-x-8 text-sm">
+            <div className="space-y-0">
+              <SummaryRow label="Policyholder" value={claim.policyholderName || "—"} />
+              <SummaryRow label="Policy" value={claim.policyNumber} />
+              <SummaryRow label="Claim ID" value={claim.claimId} />
+              <SummaryRow label="Incident date" value={formatDate(claim.incidentDate)} />
+              <SummaryRow label="Type" value={claim.incidentType} />
+            </div>
+            <div className="space-y-0">
+              <SummaryRow label="Severity" value={assessment!.severity} />
+              <SummaryRow label="Cost range" value={assessment!.estimated_cost_range} />
+              <SummaryRow label="Damaged parts" value={assessment!.damaged_parts.join(", ")} />
+              <SummaryRow label="Confidence" value={`${Math.round(assessment!.confidence * 100)}%`} />
+              {adjusterNotes && <SummaryRow label="Adjuster notes" value={adjusterNotes} />}
+            </div>
+          </div>
+        </section>
+
+        {/* Decision panel */}
+        <section className="bg-white rounded-lg border p-6 space-y-4">
+          <h2 className="text-base font-medium text-gray-900">Adjuster Decision</h2>
+
+          {decision === "idle" && (
+            <div className="flex gap-3">
               <button
-                onClick={() => setStatus("approved")}
-                disabled={status === "approved"}
-                className="flex-1 bg-gray-900 text-white text-sm py-2 rounded-lg hover:bg-gray-700 disabled:opacity-40 transition-colors font-medium"
+                onClick={() => setDecision("approved")}
+                className="flex-1 bg-gray-900 text-white text-sm py-2.5 rounded-lg hover:bg-gray-700 transition-colors font-medium"
               >
-                ✓ Approve
+                ✓ Approve & Authorize Repair
               </button>
               <button
-                onClick={() => setStatus("flagged")}
-                disabled={status === "flagged"}
-                className="flex-1 border border-orange-400 text-orange-600 text-sm py-2 rounded-lg hover:bg-orange-50 disabled:opacity-40 transition-colors font-medium"
+                onClick={() => setDecision("escalating")}
+                className="flex-1 border border-orange-400 text-orange-600 text-sm py-2.5 rounded-lg hover:bg-orange-50 transition-colors font-medium"
               >
                 ⚑ Flag for Senior Adjuster
               </button>
             </div>
-          </section>
-        )}
+          )}
+
+          {decision === "escalating" && (
+            <div className="space-y-3">
+              <div>
+                <Label>Escalation Reason</Label>
+                <select
+                  className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400"
+                  value={escalation.reason}
+                  onChange={(e) => setEscalation({ ...escalation, reason: e.target.value as Escalation["reason"] })}
+                >
+                  <option value="high_value">High value claim</option>
+                  <option value="disputed">Disputed damage</option>
+                  <option value="fraud_suspected">Fraud suspected</option>
+                  <option value="complex_damage">Complex / multi-vehicle damage</option>
+                  <option value="other">Other</option>
+                </select>
+              </div>
+              <div>
+                <Label>Notes for Senior Adjuster</Label>
+                <textarea
+                  rows={3}
+                  className="w-full border rounded px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-gray-400 resize-none"
+                  placeholder="Add context for the reviewing adjuster…"
+                  value={escalation.notes}
+                  onChange={(e) => setEscalation({ ...escalation, notes: e.target.value })}
+                />
+              </div>
+              <div className="flex gap-3">
+                <button onClick={() => setDecision("idle")} className="text-sm text-gray-500 hover:text-gray-700 px-4 py-2 rounded-lg border transition-colors">
+                  Cancel
+                </button>
+                <button
+                  onClick={() => setDecision("escalated")}
+                  className="flex-1 bg-orange-500 text-white text-sm py-2 rounded-lg hover:bg-orange-600 transition-colors font-medium"
+                >
+                  Submit Escalation
+                </button>
+              </div>
+            </div>
+          )}
+        </section>
+
+        <div className="flex justify-start">
+          <button onClick={() => goTo(3)} className="text-sm text-gray-500 hover:text-gray-700 px-4 py-2 rounded-lg border hover:border-gray-400 transition-colors">
+            ← Back to Assessment
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  // ── Render ────────────────────────────────────────────────────────────────
+  return (
+    <main className="min-h-screen bg-gray-50 py-10 px-4">
+      <div className="max-w-2xl mx-auto">
+        <div className="border-b pb-4 mb-8">
+          <h1 className="text-2xl font-semibold text-gray-900">Claims Copilot</h1>
+          <p className="text-sm text-gray-500 mt-1">AI-powered auto-insurance damage assessment</p>
+        </div>
+
+        <StepIndicator current={step} maxReached={maxReached} />
+
+        {step === 1 && renderStep1()}
+        {step === 2 && renderStep2()}
+        {step === 3 && renderStep3()}
+        {step === 4 && renderStep4()}
       </div>
     </main>
   );
