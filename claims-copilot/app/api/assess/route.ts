@@ -4,7 +4,11 @@ import { NextRequest, NextResponse } from "next/server";
 const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 const SYSTEM_PROMPT = `You are an expert auto-insurance damage assessor.
-Analyze the vehicle damage image and return ONLY valid JSON — no markdown, no extra text — with exactly these fields:
+
+If the image does NOT show a damaged vehicle, return ONLY this exact JSON and nothing else:
+{"not_a_vehicle": true, "message": "The uploaded image does not appear to show vehicle damage. Please upload a photo of the damaged vehicle."}
+
+If the image DOES show a damaged vehicle, return ONLY this exact JSON and nothing else — no markdown, no code fences, no extra text:
 {
   "damaged_parts": ["<part>", ...],
   "severity": "minor" | "moderate" | "severe",
@@ -13,6 +17,10 @@ Analyze the vehicle damage image and return ONLY valid JSON — no markdown, no 
   "confidence": <0.0–1.0>,
   "recommended_next_step": "<action>"
 }`;
+
+function stripCodeFences(text: string): string {
+  return text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
+}
 
 export async function POST(req: NextRequest) {
   try {
@@ -53,7 +61,12 @@ export async function POST(req: NextRequest) {
     const rawText =
       response.content[0].type === "text" ? response.content[0].text : "";
 
-    const assessment = JSON.parse(rawText);
+    const assessment = JSON.parse(stripCodeFences(rawText));
+
+    if (assessment.not_a_vehicle) {
+      return NextResponse.json({ error: assessment.message }, { status: 422 });
+    }
+
     return NextResponse.json(assessment);
   } catch (err) {
     const message = err instanceof Error ? err.message : "Unknown error";
