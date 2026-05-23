@@ -257,6 +257,46 @@ export default function Home() {
     setEscalation({ reason: "high_value", notes: "" });
   }
 
+  function fillDemo() {
+    const SCENARIOS: ClaimData[] = [
+      {
+        policyholderName: "Sarah Mitchell",
+        policyholderPhone: "+1 415 555 0192",
+        policyNumber: "POL-294817",
+        claimId: "CLM-884201",
+        incidentDate: "2026-05-18",
+        incidentType: "collision",
+        incidentLocation: "I-280 & Edgewood Rd, Redwood City, CA",
+        thirdPartyInvolved: true,
+        description: "Rear-ended at a red light by a pick-up truck. Significant damage to the trunk and rear bumper. Airbags did not deploy. Other driver admitted fault at the scene.",
+      },
+      {
+        policyholderName: "James Okafor",
+        policyholderPhone: "+1 312 555 0748",
+        policyNumber: "POL-103956",
+        claimId: "CLM-672340",
+        incidentDate: "2026-05-20",
+        incidentType: "weather",
+        incidentLocation: "4th Ave & Monroe St, Chicago, IL",
+        thirdPartyInvolved: false,
+        description: "Large hailstorm caused dents across the hood, roof, and trunk lid. Several window chips. Vehicle was parked in an open lot.",
+      },
+      {
+        policyholderName: "Priya Nair",
+        policyholderPhone: "+1 713 555 0361",
+        policyNumber: "POL-748302",
+        claimId: "CLM-119847",
+        incidentDate: "2026-05-21",
+        incidentType: "theft",
+        incidentLocation: "2200 Westheimer Rd, Houston, TX",
+        thirdPartyInvolved: false,
+        description: "Driver's side window smashed overnight, center console broken into. GPS and laptop bag stolen. No suspects identified.",
+      },
+    ];
+    const pick = SCENARIOS[Math.floor(Math.random() * SCENARIOS.length)];
+    setClaim(pick);
+  }
+
   const authRef = claim.claimId
     ? `AUTH-${claim.claimId.toUpperCase()}-${new Date().toISOString().slice(0, 10)}`
     : `AUTH-${Date.now()}`;
@@ -272,7 +312,15 @@ export default function Home() {
           <h2 className="text-base font-medium text-gray-900">Claim Initiation</h2>
           <p className="text-xs text-gray-400 mt-0.5">Agent collects details from policyholder contact</p>
         </div>
-        <RoleBadge role="Claims Agent" />
+        <div className="flex items-center gap-2 shrink-0">
+          <button
+            onClick={fillDemo}
+            className="text-xs text-gray-400 hover:text-gray-600 border border-dashed border-gray-300 hover:border-gray-400 px-2 py-1 rounded transition-colors"
+          >
+            Fill demo data
+          </button>
+          <RoleBadge role="Claims Agent" />
+        </div>
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div>
