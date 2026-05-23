@@ -344,7 +344,7 @@ export default function Home() {
         </button>
         <button
           disabled={!imageBase64}
-          onClick={() => goTo(3)}
+          onClick={() => { goTo(3); handleAssess(); }}
           className="bg-gray-900 text-white text-sm px-5 py-2 rounded-lg disabled:opacity-40 hover:bg-gray-700 transition-colors font-medium"
         >
           Next: Run Assessment →
@@ -363,7 +363,23 @@ export default function Home() {
         </div>
 
         {previewUrl && (
-          <img src={previewUrl} alt="Uploaded damage" className="max-h-40 rounded object-contain border" />
+          <div className="space-y-1">
+            <img src={previewUrl} alt="Uploaded damage" className="max-h-40 rounded object-contain border" />
+            <button
+              className="text-xs text-red-400 hover:text-red-600 underline"
+              onClick={() => {
+                setPreviewUrl(null);
+                setImageBase64(null);
+                setImageMediaType("");
+                setAssessment(null);
+                setAssessError(null);
+                if (fileInputRef.current) fileInputRef.current.value = "";
+                goTo(2);
+              }}
+            >
+              Change photo
+            </button>
+          </div>
         )}
 
         <div className="flex items-center gap-3">
