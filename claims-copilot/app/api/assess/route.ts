@@ -24,7 +24,7 @@ function stripCodeFences(text: string): string {
 
 export async function POST(req: NextRequest) {
   try {
-    const { image, mediaType } = await req.json();
+    const { image, mediaType, model, systemPrompt } = await req.json();
 
     if (!image || !mediaType) {
       return NextResponse.json(
@@ -34,9 +34,9 @@ export async function POST(req: NextRequest) {
     }
 
     const response = await client.messages.create({
-      model: "claude-sonnet-4-6",
+      model: model || "claude-sonnet-4-6",
       max_tokens: 1024,
-      system: SYSTEM_PROMPT,
+      system: systemPrompt || SYSTEM_PROMPT,
       messages: [
         {
           role: "user",

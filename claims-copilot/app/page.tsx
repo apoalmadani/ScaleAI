@@ -1,6 +1,12 @@
 "use client";
 
-import { useRef, useState, ChangeEvent } from "react";
+import { useRef, useState, useEffect, ChangeEvent } from "react";
+import Link from "next/link";
+import {
+  AssessmentStrategy,
+  BUILTIN_STRATEGIES,
+  loadSettings,
+} from "@/lib/strategies";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -138,6 +144,16 @@ function SummaryRow({ label, value }: { label: string; value: string }) {
 export default function Home() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const [activeStrategy, setActiveStrategy] = useState<AssessmentStrategy>(
+    BUILTIN_STRATEGIES.find((s) => s.id === "sonnet")!
+  );
+
+  useEffect(() => {
+    const { activeId, strategies } = loadSettings();
+    const found = strategies.find((s) => s.id === activeId);
+    if (found) setActiveStrategy(found);
+  }, []);
+
   const [step, setStep] = useState<Step>(1);
   const [maxReached, setMaxReached] = useState<Step>(1);
 
@@ -178,6 +194,15 @@ export default function Home() {
     setAssessError(null);
   }
 
+  const EMPTY_ASSESSMENT: Assessment = {
+    damaged_parts: [],
+    severity: "minor",
+    damage_types: [],
+    estimated_cost_range: "",
+    confidence: 1.0,
+    recommended_next_step: "",
+  };
+
   async function handleAssess() {
     if (!imageBase64) return;
     setLoading(true);
@@ -186,7 +211,12 @@ export default function Home() {
       const res = await fetch("/api/assess", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ image: imageBase64, mediaType: imageMediaType }),
+        body: JSON.stringify({
+          image: imageBase64,
+          mediaType: imageMediaType,
+          model: activeStrategy.model,
+          systemPrompt: activeStrategy.prompt,
+        }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Assessment failed");
@@ -196,6 +226,11 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
+  }
+
+  function startManual() {
+    setAssessment(EMPTY_ASSESSMENT);
+    setAssessError(null);
   }
 
   function updateAssessment<K extends keyof Assessment>(key: K, value: Assessment[K]) {
@@ -363,10 +398,14 @@ export default function Home() {
         </button>
         <button
           disabled={!imageBase64}
-          onClick={() => { goTo(3); handleAssess(); }}
+          onClick={() => {
+            goTo(3);
+            if (activeStrategy.type === "manual") startManual();
+            else handleAssess();
+          }}
           className="bg-gray-900 text-white text-sm px-5 py-2 rounded-lg disabled:opacity-40 hover:bg-gray-700 transition-colors font-medium"
         >
-          Next: Run Assessment →
+          {activeStrategy.type === "manual" ? "Next: Enter Manually →" : "Next: Run Assessment →"}
         </button>
       </div>
     </section>
@@ -378,10 +417,21 @@ export default function Home() {
       <section className="bg-white rounded-lg border p-6 space-y-4">
         <div className="mb-2 flex items-start justify-between gap-2">
           <div>
-            <h2 className="text-base font-medium text-gray-900">AI Damage Assessment</h2>
-            <p className="text-xs text-gray-400 mt-0.5">AI analyses the photo; agent reviews and corrects the estimate</p>
+            <h2 className="text-base font-medium text-gray-900">
+              {activeStrategy.type === "manual" ? "Manual Assessment" : "AI Damage Assessment"}
+            </h2>
+            <p className="text-xs text-gray-400 mt-0.5">
+              {activeStrategy.type === "manual"
+                ? "Fill in the damage estimate manually"
+                : "AI analyses the photo; agent reviews and corrects the estimate"}
+            </p>
           </div>
-          <RoleBadge role="Claims Agent" />
+          <div className="flex items-center gap-2 shrink-0">
+            <span className="text-xs bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full">
+              {activeStrategy.name}
+            </span>
+            <RoleBadge role="Claims Agent" />
+          </div>
         </div>
 
         {previewUrl && (
@@ -404,22 +454,24 @@ export default function Home() {
           </div>
         )}
 
-        <div className="flex items-center gap-3">
-          <button
-            onClick={handleAssess}
-            disabled={loading}
-            className="flex items-center gap-2 bg-gray-900 text-white text-sm px-5 py-2 rounded-lg disabled:opacity-40 hover:bg-gray-700 transition-colors font-medium"
-          >
-            {loading && (
-              <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
-                <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
-              </svg>
-            )}
-            {loading ? "Analysing…" : assessment ? "Re-run Assessment" : "Run AI Assessment"}
-          </button>
-          {assessError && <p className="text-sm text-red-600">{assessError}</p>}
-        </div>
+        {activeStrategy.type === "ai" && (
+          <div className="flex items-center gap-3">
+            <button
+              onClick={handleAssess}
+              disabled={loading}
+              className="flex items-center gap-2 bg-gray-900 text-white text-sm px-5 py-2 rounded-lg disabled:opacity-40 hover:bg-gray-700 transition-colors font-medium"
+            >
+              {loading && (
+                <svg className="animate-spin h-4 w-4 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" />
+                </svg>
+              )}
+              {loading ? "Analysing…" : assessment ? "Re-run Assessment" : "Run AI Assessment"}
+            </button>
+            {assessError && <p className="text-sm text-red-600">{assessError}</p>}
+          </div>
+        )}
 
         {assessment && (
           <div className="space-y-4 pt-2 border-t">
@@ -631,9 +683,18 @@ export default function Home() {
   return (
     <main className="min-h-screen bg-gray-50 py-10 px-4">
       <div className="max-w-2xl mx-auto">
-        <div className="border-b pb-4 mb-8">
-          <h1 className="text-2xl font-semibold text-gray-900">Claims Copilot</h1>
-          <p className="text-sm text-gray-500 mt-1">AI-powered auto-insurance damage assessment</p>
+        <div className="border-b pb-4 mb-8 flex items-start justify-between">
+          <div>
+            <h1 className="text-2xl font-semibold text-gray-900">Claims Copilot</h1>
+            <p className="text-sm text-gray-500 mt-1">AI-powered auto-insurance damage assessment</p>
+          </div>
+          <Link href="/settings" className="text-sm text-gray-500 hover:text-gray-800 flex items-center gap-1 mt-1">
+            <svg xmlns="http://www.w3.org/2000/svg" className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+              <path strokeLinecap="round" strokeLinejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+            Settings
+          </Link>
         </div>
 
         <StepIndicator current={step} maxReached={maxReached} />
