@@ -98,6 +98,19 @@ function StepIndicator({ current, maxReached }: { current: Step; maxReached: Ste
   );
 }
 
+function RoleBadge({ role }: { role: "Claims Agent" | "Policyholder" | "Claims Agent + Senior Adjuster" }) {
+  const colors: Record<string, string> = {
+    "Claims Agent": "bg-blue-100 text-blue-700",
+    "Policyholder": "bg-purple-100 text-purple-700",
+    "Claims Agent + Senior Adjuster": "bg-orange-100 text-orange-700",
+  };
+  return (
+    <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${colors[role]}`}>
+      {role}
+    </span>
+  );
+}
+
 function Label({ children }: { children: React.ReactNode }) {
   return <label className="block text-xs font-medium text-gray-500 uppercase tracking-wide mb-1">{children}</label>;
 }
@@ -219,9 +232,12 @@ export default function Home() {
 
   const renderStep1 = () => (
     <section className="bg-white rounded-lg border p-6 space-y-4">
-      <div className="mb-2">
-        <h2 className="text-base font-medium text-gray-900">Claim Initiation</h2>
-        <p className="text-xs text-gray-400 mt-0.5">Collected by claims agent from policyholder contact</p>
+      <div className="mb-2 flex items-start justify-between gap-2">
+        <div>
+          <h2 className="text-base font-medium text-gray-900">Claim Initiation</h2>
+          <p className="text-xs text-gray-400 mt-0.5">Agent collects details from policyholder contact</p>
+        </div>
+        <RoleBadge role="Claims Agent" />
       </div>
       <div className="grid grid-cols-2 gap-4">
         <div>
@@ -299,9 +315,12 @@ export default function Home() {
   // ── Step 2 ────────────────────────────────────────────────────────────────
   const renderStep2 = () => (
     <section className="bg-white rounded-lg border p-6 space-y-4">
-      <div className="mb-2">
-        <h2 className="text-base font-medium text-gray-900">Damage Documentation</h2>
-        <p className="text-xs text-gray-400 mt-0.5">Photos submitted by the policyholder</p>
+      <div className="mb-2 flex items-start justify-between gap-2">
+        <div>
+          <h2 className="text-base font-medium text-gray-900">Damage Documentation</h2>
+          <p className="text-xs text-gray-400 mt-0.5">Policyholder submits photos; agent uploads on their behalf</p>
+        </div>
+        <RoleBadge role="Policyholder" />
       </div>
       <div
         className="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center cursor-pointer hover:border-gray-400 transition-colors"
@@ -357,9 +376,12 @@ export default function Home() {
   const renderStep3 = () => (
     <div className="space-y-4">
       <section className="bg-white rounded-lg border p-6 space-y-4">
-        <div className="mb-2">
-          <h2 className="text-base font-medium text-gray-900">AI Damage Assessment</h2>
-          <p className="text-xs text-gray-400 mt-0.5">AI analyses the photo and generates a structured damage estimate for agent review</p>
+        <div className="mb-2 flex items-start justify-between gap-2">
+          <div>
+            <h2 className="text-base font-medium text-gray-900">AI Damage Assessment</h2>
+            <p className="text-xs text-gray-400 mt-0.5">AI analyses the photo; agent reviews and corrects the estimate</p>
+          </div>
+          <RoleBadge role="Claims Agent" />
         </div>
 
         {previewUrl && (
@@ -512,7 +534,10 @@ export default function Home() {
       <div className="space-y-4">
         {/* Claim + assessment summary */}
         <section className="bg-white rounded-lg border p-6 space-y-3">
-          <h2 className="text-base font-medium text-gray-900">Claim Summary</h2>
+          <div className="flex items-center justify-between">
+            <h2 className="text-base font-medium text-gray-900">Claim Summary</h2>
+            <RoleBadge role="Claims Agent + Senior Adjuster" />
+          </div>
           <div className="grid grid-cols-2 gap-x-8 text-sm">
             <div className="space-y-0">
               <SummaryRow label="Policyholder" value={claim.policyholderName || "—"} />
