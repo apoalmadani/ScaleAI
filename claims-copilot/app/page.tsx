@@ -7,6 +7,7 @@ import {
   BUILTIN_STRATEGIES,
   loadSettings,
 } from "@/lib/strategies";
+import { RepairDbSettings, loadRepairDb } from "@/lib/repairCosts";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -31,6 +32,9 @@ interface Assessment {
   estimated_cost_range: string;
   confidence: number;
   recommended_next_step: string;
+  // Tool use metadata (from price DB lookup)
+  consultedParts?: string[];
+  priceLookup?: Record<string, { min: number; max: number; laborHours: number } | null>;
 }
 
 interface Escalation {
@@ -148,10 +152,16 @@ export default function Home() {
     BUILTIN_STRATEGIES.find((s) => s.id === "sonnet")!
   );
 
+  const [repairDb, setRepairDb] = useState<RepairDbSettings>({
+    enabled: true,
+    entries: [],
+  });
+
   useEffect(() => {
     const { activeId, strategies } = loadSettings();
     const found = strategies.find((s) => s.id === activeId);
     if (found) setActiveStrategy(found);
+    setRepairDb(loadRepairDb());
   }, []);
 
   const [step, setStep] = useState<Step>(1);
@@ -216,6 +226,7 @@ export default function Home() {
           mediaType: imageMediaType,
           model: activeStrategy.model,
           systemPrompt: activeStrategy.prompt,
+          repairDb: repairDb.enabled ? repairDb : { enabled: false, entries: [] },
         }),
       });
       const data = await res.json();
@@ -523,11 +534,21 @@ export default function Home() {
 
         {assessment && (
           <div className="space-y-4 pt-2 border-t">
-            <div className="flex items-center justify-between">
+            <div className="flex items-center justify-between flex-wrap gap-2">
               <span className="text-sm font-medium text-gray-700">Assessment Results</span>
-              <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${confidenceColor(assessment.confidence)}`}>
-                Confidence {Math.round(assessment.confidence * 100)}%
-              </span>
+              <div className="flex items-center gap-2 flex-wrap">
+                {assessment.consultedParts && assessment.consultedParts.length > 0 && (
+                  <span
+                    className="text-xs font-medium px-2.5 py-1 rounded-full bg-indigo-100 text-indigo-700 flex items-center gap-1"
+                    title={`Parts looked up: ${assessment.consultedParts.join(", ")}`}
+                  >
+                    🗄 Price DB · {assessment.consultedParts.length} part{assessment.consultedParts.length !== 1 ? "s" : ""}
+                  </span>
+                )}
+                <span className={`text-xs font-medium px-2.5 py-1 rounded-full ${confidenceColor(assessment.confidence)}`}>
+                  Confidence {Math.round(assessment.confidence * 100)}%
+                </span>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4 text-sm">
