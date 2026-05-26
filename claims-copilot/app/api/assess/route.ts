@@ -45,8 +45,26 @@ const REPAIR_TOOL = {
   },
 };
 
-function stripCodeFences(text: string): string {
-  return text.replace(/^```(?:json)?\s*/i, "").replace(/\s*```\s*$/, "").trim();
+/**
+ * Robustly extract a JSON object from a model response.
+ * Strips markdown code fences, then finds the first { … } block to
+ * handle cases where the model adds a preamble before the JSON.
+ */
+function extractJson(text: string): string {
+  // Remove markdown code fences
+  let cleaned = text
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```\s*$/, "")
+    .trim();
+
+  // If the response starts with non-JSON text, find the actual object
+  const start = cleaned.indexOf("{");
+  const end = cleaned.lastIndexOf("}");
+  if (start !== -1 && end > start) {
+    cleaned = cleaned.slice(start, end + 1);
+  }
+
+  return cleaned;
 }
 
 export async function POST(req: NextRequest) {
@@ -126,7 +144,7 @@ export async function POST(req: NextRequest) {
         const rawText =
           textBlock && textBlock.type === "text" ? textBlock.text : "";
 
-        const assessment = JSON.parse(stripCodeFences(rawText));
+        const assessment = JSON.parse(extractJson(rawText));
 
         if (assessment.not_a_vehicle) {
           return NextResponse.json(
